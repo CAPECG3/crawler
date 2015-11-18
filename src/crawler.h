@@ -35,6 +35,7 @@ private:
 	void init_event();
 	void connect();
 	static size_t socketNum;
+	static size_t socketNumLimit;
 	static size_t endNum;
 	static void cb_connect(struct bufferevent *bev, short events, void *ptr);
 	static void cb_read(struct bufferevent *bev, void *ptr);

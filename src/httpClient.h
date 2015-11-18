@@ -49,5 +49,8 @@ private:
 	static void scannerThread(char *str, size_t len);
 	static void scanner(char *str, size_t len);
 	ResponseHeader *responseHeader = NULL;
+	enum state {
+		state0, state1, state2, state3, state4, state5, state6, state7, state8, state9, state10
+	};
 };
 #endif

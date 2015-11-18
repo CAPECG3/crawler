@@ -1,6 +1,6 @@
 #include "httpClient.h"
 BlockingQueue<std::string> HttpClient::urlQueue;
-ltcp::ThreadPool HttpClient::threadPool(100);
+ltcp::ThreadPool HttpClient::threadPool(4);
 BloomFilter HttpClient::bloomFilter;
 ofstream HttpClient::resultFile("result.txt");
 void HttpClient::request() {
@@ -88,9 +88,6 @@ void HttpClient::scanner(char *str, size_t len) {
 }
 void HttpClient::scannerThread(char *str, size_t len) {
 	//fwrite(str, 1, len, stdout);
-	enum state {
-		state0, state1, state2, state3, state4, state5, state6, state7, state8, state9, state10
-	};
 	state curState = state0;
 	std::string urlTmp = "/";
 	for (size_t i = 0; i < len; i++) {

@@ -1,9 +1,11 @@
 #include "crawler.h"
 size_t Crawler::endNum = 0;
-size_t Crawler::socketNum = 100;
+size_t Crawler::socketNum = 1;
+size_t Crawler::socketNumLimit = 10000;
 Crawler::Crawler(const std::string &_host, const std::string &_url):
-	host(_host), initURL(_url), port(80), sock(socketNum),
-	bev(socketNum, NULL), httpClient(socketNum, NULL) {
+	host(_host), initURL(_url), port(80), sock(socketNumLimit),
+	bev(socketNumLimit, NULL), httpClient(socketNumLimit, NULL) {
+	HttpClient::urlQueue.push(initURL);
 	HttpClient::threadPool.run();
 	init_event();
 	connect();
@@ -15,12 +17,12 @@ void Crawler::init_event() {
 	dns_base = evdns_base_new(base, 1);
 	endNum = 0;
 	for (size_t i = 0; i < socketNum; i++) {
-		HttpClient::urlQueue.push(initURL);
 		httpClient[i] = new HttpClient(host, initURL, i);
 		httpClient[i]->dns_base = dns_base;
 		//socket new
 		bev[i] = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
-		bufferevent_setcb(bev[i], cb_read, cb_write , cb_connect, httpClient[i]);
+		//bufferevent_setcb(bev[i], cb_read, cb_write , cb_connect, httpClient[i]);
+		bufferevent_setcb(bev[i], cb_read, NULL , cb_connect, httpClient[i]);
 		bufferevent_enable(bev[i], EV_READ | EV_WRITE | EV_PERSIST);
 		//bufferevent_set_timeouts(bev, &read_time, &write_time);
 		httpClient[i]->bev = bev[i];
@@ -62,6 +64,7 @@ void Crawler::cb_connect(struct bufferevent *bev, short events, void *ptr) {
 			event_base_loopbreak(base);
 			event_base_free(base);
 			evdns_base_free(dns_base, true);
+			socketNum = 200;
 			//HttpClient::resultFile.close();
 			//HttpClient::threadPool.cancel();
 		}
