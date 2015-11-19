@@ -46,7 +46,7 @@ void HttpClient::responseParser(ResNode *resNode) {
 			}
 		}
 		else if (!strncmp(resNode->buf, "HTTP/1.1 404", 12)) {
-			if (resNode->buf < resNode->bufWindow) {
+			if (resNode->bufLen < resNode->bufWindow) {
 				request();
 			}
 			return ;
@@ -62,7 +62,7 @@ void HttpClient::responseParser(ResNode *resNode) {
 	}
 	else {
 		std::cout << "HTTP response status is not 200/301" << std::endl;
-		if (resNode->buf < resNode->bufWindow) {
+		if (resNode->bufLen < resNode->bufWindow) {
 			request();
 		}
 		return ;

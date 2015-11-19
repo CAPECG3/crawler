@@ -15,7 +15,7 @@
 #include <condition_variable>
 struct ResNode { //response node
 	char buf[1024];
-	size_t bufWindow = 1024; //buf memory window
+	int bufWindow = 1024; //buf memory window
 	int bufLen = 0; //used
 	ResNode *next = NULL; //next node of this response
 };
@@ -49,11 +49,9 @@ public:
 	void request();
 	void responseParser(ResNode *resNode);
 	static void scannerThread();
-	static void requestThread(bufferevent *bev, const std::string &host, std::string *URL);
 	static BlockingQueue<std::string> urlQueue;
 	static BlockingQueue<Response *> resQueue;
 	static ltcp::ThreadPool scannerThreadPool;
-	static ltcp::ThreadPool requestThreadPool;
 	static BloomFilter bloomFilter;
 	static ofstream resultFile;
 private:
