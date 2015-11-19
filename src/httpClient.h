@@ -28,6 +28,7 @@ struct Response {
 			delete headRes;
 		}
 	}
+	int status = 200;
 	ResNode *headRes = NULL;
 	ResNode *tailRes = NULL;
 	size_t conLen = 0; // html total len

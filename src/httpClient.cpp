@@ -39,6 +39,9 @@ void HttpClient::responseParser(ResNode *resNode) {
 				}
 				response->conLen = atoi(tmp);
 			}
+			else {
+				std::cout << "debug" << std::endl;
+			}
 			char *conBegin = strstr(resNode->buf, "\r\n\r\n");
 			if (conBegin && response->conLen >= 4) {
 				conBegin += 4;
@@ -46,35 +49,49 @@ void HttpClient::responseParser(ResNode *resNode) {
 			}
 		}
 		else if (!strncmp(resNode->buf, "HTTP/1.1 404", 12)) {
-			if (resNode->bufLen < resNode->bufWindow) {
-				request();
-			}
-			return ;
+			std::cout << "HTTP response status 404" << std::endl;
+			response = new Response();
+			response->status = 404;
+			response->headRes = resNode;
+			response->tailRes = resNode;
+			response->conLen = 1375; //only for news.sohu.com
+			response->conRecLen = resNode->bufLen;
 		}
 		else {
 			return ;
 		}
 	}
-	else if (response != NULL) {
+	else if (response != NULL && response->status == 200) {
+		response->conRecLen += resNode->bufLen;
+		response->tailRes->next = resNode;
+		response->tailRes = resNode;
+	}
+	else if (response != NULL && response->status == 404) {
 		response->conRecLen += resNode->bufLen;
 		response->tailRes->next = resNode;
 		response->tailRes = resNode;
 	}
 	else {
-		std::cout << "HTTP response status is not 200/301" << std::endl;
+		std::cout << "HTTP response status is not 200/301/400" << std::endl;
 		if (resNode->bufLen < resNode->bufWindow) {
 			request();
 		}
 		return ;
 	}
 	if (response && response->conRecLen >= response->conLen && response->conLen != 0) {
-		//std::cout << "bev" << bevName << " Read done." << std::endl;
-		static int readNum = 1;
-		std::cout << readNum++ << " URL crawled" << std::endl;
-		resultFile << host << curURL << " " << response->conLen << std::endl;
-		//add response to response queue
-		resQueue.push(response);
-		response = NULL;
+		if (response->status == 200) {
+			static int readNum = 1;
+			std::cout << readNum++ << " URL crawled" << std::endl;
+			resultFile << host << curURL << " " << response->conLen << std::endl;
+			//add response to response queue
+			resQueue.push(response);
+			response = NULL;
+		}
+		else if (response->status == 404) {
+			std::cout << "HTTP response status 404" << std::endl;
+			delete response;
+			response = NULL;
+		}
 		request();
 		return ;
 	}
