@@ -1,17 +1,18 @@
 #include "httpClient.h"
 BlockingQueue<std::string> HttpClient::urlQueue;
-ltcp::ThreadPool HttpClient::threadPool(4);
+BlockingQueue<Response *> HttpClient::resQueue;
+ltcp::ThreadPool HttpClient::scannerThreadPool;
 BloomFilter HttpClient::bloomFilter;
 ofstream HttpClient::resultFile("result.txt");
+HttpClient::HttpClient(const std::string &_host, const std::string &_url, int _bevName):
+	host(_host), curURL(_url), port(80), bevName(_bevName) {
+}
 void HttpClient::request() {
-	//threadPool.push(requestThread, bev, host, &curURL);
-	requestThread(bev, host, &curURL);
-};
-void HttpClient::requestThread(bufferevent *bev, const std::string &host, string *URL) {
+	//requestThreadPool.push(requestThread, bev, host, &curURL);
 	std::cout << urlQueue.size() << " URL left" << std::endl;
-	*URL = urlQueue.pop();
+	curURL = urlQueue.pop();
 	std::string requestString;
-	requestString =  "GET " + *URL + " HTTP/1.1\r\n"
+	requestString =  "GET " + curURL + " HTTP/1.1\r\n"
 	                 + "Host: " +  host + "\r\n"
 	                 + "Connection: keep-alive\r\n"
 	                 + "Cache-Control: max-age=0\r\n"
@@ -22,161 +23,215 @@ void HttpClient::requestThread(bufferevent *bev, const std::string &host, string
 	                 + "Accept-Language: zh-CN,zh;q=0.8,sq;q=0.6\r\n"
 	                 + "\r\n";
 	bufferevent_write(bev, requestString.c_str(), requestString.size());
-}
-void HttpClient::headerParser(char *buf, size_t len) {
-	if (!strncmp(buf, "HTTP/1.1", 8)) {
-		if (!strncmp(buf, "HTTP/1.1 200 OK", 15)) {
-			if (responseHeader)
-				delete responseHeader;
-			responseHeader = new ResponseHeader();
-			responseHeader->curLength = len;
-			char *header = buf + 17;
-			//find content-length
-			char *contentBegin = strstr(header , "Content-Length");
-			if (contentBegin != NULL) {
+};
+void HttpClient::responseParser(ResNode *resNode) {
+	if (resNode->bufLen > 15  && !strncmp(resNode->buf, "HTTP/1.1", 8)) {
+		if (!strncmp(resNode->buf, "HTTP/1.1 200 OK", 15) || !strncmp(resNode->buf, "HTTP/1.1 301", 12)) {
+			response = new Response();
+			response->headRes = resNode;
+			response->tailRes = resNode;
+			char *conLenBegin = strstr(resNode->buf , "Content-Length");
+			if (conLenBegin != NULL) {
 				char tmp[10] = {0};
-				contentBegin += 16;
-				for (int i = 0; * (contentBegin + i) != '\r'; i++) {
-					tmp[i] = *(contentBegin + i);
+				conLenBegin += 16;
+				for (int i = 0; * (conLenBegin + i) != '\r'; i++) {
+					tmp[i] = *(conLenBegin + i);
 				}
-				responseHeader->contentLength = atoi(tmp);
+				response->conLen = atoi(tmp);
 			}
-			//html data point
-			if (responseHeader->contentLength != 0) {
-				responseHeader->content = strstr(contentBegin, "\r\n\r\n");
-			}
-			if (responseHeader->content != NULL) {
-				responseHeader->content += 4;
-				responseHeader->curLength = (len - (responseHeader->content - buf));
-				responseHeader->receivedLength = responseHeader->curLength;
+			char *conBegin = strstr(resNode->buf, "\r\n\r\n");
+			if (conBegin && response->conLen >= 4) {
+				conBegin += 4;
+				response->conRecLen = (resNode->bufLen - (conBegin - resNode->buf));
 			}
 		}
-		else if (!strncmp(buf, "HTTP/1.1 404", 12)) {
-			request();
-			return ;
-		}
-		else if (!strncmp(buf, "HTTP/1.1 301", 12)) {
-			request();
+		else if (!strncmp(resNode->buf, "HTTP/1.1 404", 12)) {
+			if (resNode->buf < resNode->bufWindow) {
+				request();
+			}
 			return ;
 		}
 		else {
 			return ;
 		}
 	}
-	else if (responseHeader != NULL) {
-		responseHeader->receivedLength += len;
-		responseHeader->curLength = len;
-		responseHeader->content = buf;
-		scannerThread(buf, len);
+	else if (response != NULL) {
+		response->conRecLen += resNode->bufLen;
+		response->tailRes->next = resNode;
+		response->tailRes = resNode;
 	}
-	if (responseHeader && responseHeader->receivedLength >= responseHeader->contentLength && responseHeader->contentLength != 0) {
+	else {
+		std::cout << "HTTP response status is not 200/301" << std::endl;
+		if (resNode->buf < resNode->bufWindow) {
+			request();
+		}
+		return ;
+	}
+	if (response && response->conRecLen >= response->conLen && response->conLen != 0) {
 		//std::cout << "bev" << bevName << " Read done." << std::endl;
 		static int readNum = 1;
 		std::cout << readNum++ << " URL crawled" << std::endl;
-		responseHeader->readDone = true;
-		resultFile << host << curURL << " " << responseHeader->contentLength << std::endl;
-		if (responseHeader) {
-			delete responseHeader;
-			responseHeader = NULL;
-		}
+		resultFile << host << curURL << " " << response->conLen << std::endl;
+		//add response to response queue
+		resQueue.push(response);
+		response = NULL;
 		request();
 		return ;
 	}
 }
-void HttpClient::scanner(char *str, size_t len) {
-	threadPool.push(scannerThread, str, len);
-}
-void HttpClient::scannerThread(char *str, size_t len) {
-	//fwrite(str, 1, len, stdout);
-	state curState = state0;
-	std::string urlTmp = "/";
-	for (size_t i = 0; i < len; i++) {
-		switch (curState) {
-		case state0:
-			if (str[i] == '<')  curState = state1;
-			break;
-		case state1:
-			if (str[i] == 'a')  curState = state2;
-			else   curState = state0;
-			break;
-		case state2:
-			if (str[i] == 'h')  curState = state3;
-			break;
-		case state3:
-			if (str[i] == 'r')  curState = state4;
-			else if (str[i] == '>') curState = state0;
-			else  curState = state2;
-			break;
-		case state4:
-			if (str[i] == 'e')  curState = state5;
-			else if (str[i] == '>') curState = state0;
-			else  curState = state2;
-			break;
-		case state5:
-			if (str[i] == 'f')  curState = state6;
-			else if (str[i] == '>') curState = state0;
-			else  curState = state2;
-			break;
-		case state6:
-			if (str[i] == '=')  curState = state7;
-			else if (str[i] == '>') curState = state0;
-			else  curState = state2;
-			break;
-		case state7:
-			if (str[i] == ' ')  curState = state7;
-			else if (str[i] == '\"') curState = state10;
-			else  curState = state0;
-			break;
-		case state10:
-			if (str[i] == '/') {   curState = state8; break;  }
-			if ((len - i) >= 7) {
-				std::string tmp(str + i, 7);
-				if (tmp == "http://") {
-					i += 7;
-				}
-			}
-			//if ((len - i) >= this->host.size()) {
-			//std::string tmp(str + i, this->host.size());
-			//if (tmp == this->host) {
-			//i += this->host.size();
-			//break;
-			//}
-			if ((len - i) >= 13) {
-				std::string tmp(str + i, 13);
-				if (tmp == "news.sohu.com") {
-					i += 12;
-					/*
-					count
-					static int hehe=0;
-					std::cout << ++hehe << std::endl;
-					*/
+void HttpClient::scannerThread() {
+	// this dfs is only for news.sohu.com
+	while (1) {
+		Response *response = resQueue.pop();
+		ResNode *resNode = response->headRes;
+		state curState = state0;
+		std::string urlTmp = "/";
+		while (resNode) {
+			char *str = resNode->buf;
+			for (size_t i = 0; i < resNode->bufLen; i++) {
+				switch (curState) {
+				case state0:
+					if (str[i] == '<')  curState = state1;
+					break;
+				case state1:
+					if (str[i] == 'a')  curState = state2;
+					else   curState = state0;
+					break;
+				case state2:
+					if (str[i] == 'h')  curState = state3;
+					break;
+				case state3:
+					if (str[i] == 'r')  curState = state4;
+					else if (str[i] == '>') curState = state0;
+					else  curState = state2;
+					break;
+				case state4:
+					if (str[i] == 'e')  curState = state5;
+					else if (str[i] == '>') curState = state0;
+					else  curState = state2;
+					break;
+				case state5:
+					if (str[i] == 'f')  curState = state6;
+					else if (str[i] == '>') curState = state0;
+					else  curState = state2;
+					break;
+				case state6:
+					if (str[i] == '=')  curState = state7;
+					else if (str[i] == '>') curState = state0;
+					else  curState = state2;
+					break;
+				case state7:
+					if (str[i] == ' ')  curState = state7;
+					else if (str[i] == '\"') curState = state8;
+					else  curState = state0;
+					break;
+				case state8:
+					if (str[i] == 'h') curState = state9;
+					else if (str[i] == '/') curState = state29;
+					else if (str[i] == ' ') break;
+					else curState = state0;
+					break;
+				case state9:
+					if (str[i] == 't') curState = state10;
+					else curState = state0;
+					break;
+				case state10:
+					if (str[i] == 't') curState = state11;
+					else curState = state0;
+					break;
+				case state11:
+					if (str[i] == 'p') curState = state12;
+					else curState = state0;
+					break;
+				case state12:
+					if (str[i] == ':') curState = state13;
+					else curState = state0;
+					break;
+				case state13:
+					if (str[i] == '/') curState = state14;
+					else curState = state0;
+					break;
+				case state14:
+					if (str[i] == '/') curState = state15;
+					else curState = state0;
+					break;
+				case state15:
+					if (str[i] == 'n') curState = state16;
+					else curState = state0;
+					break;
+				case state16:
+					if (str[i] == 'e') curState = state17;
+					else curState = state0;
+					break;
+				case state17:
+					if (str[i] == 'w') curState = state18;
+					else curState = state0;
+					break;
+				case state18:
+					if (str[i] == 's') curState = state19;
+					else curState = state0;
+					break;
+				case state19:
+					if (str[i] == '.') curState = state20;
+					else curState = state0;
+					break;
+				case state20:
+					if (str[i] == 's') curState = state21;
+					else curState = state0;
+					break;
+				case state21:
+					if (str[i] == 'o') curState = state22;
+					else curState = state0;
+					break;
+				case state22:
+					if (str[i] == 'h') curState = state23;
+					else curState = state0;
+					break;
+				case state23:
+					if (str[i] == 'u') curState = state24;
+					else curState = state0;
+					break;
+				case state24:
+					if (str[i] == '.') curState = state25;
+					else curState = state0;
+					break;
+				case state25:
+					if (str[i] == 'c') curState = state26;
+					else curState = state0;
+					break;
+				case state26:
+					if (str[i] == 'o') curState = state27;
+					else curState = state0;
+					break;
+				case state27:
+					if (str[i] == 'm') curState = state28;
+					else curState = state0;
+					break;
+				case state28:
+					if (str[i] == '/') curState = state29;
+					else curState = state0;
+					break;
+				case state29:
+					if (str[i] == ' ') break;
+					else if (str[i] == '>') curState = state0;
+					else if (str[i] == '\"') curState = state30;
+					else if (str[i] == '\n' || str[i] == '\r') break;
+					else {
+						urlTmp.push_back(str[i]);
+					}
 					break;
 				}
-				else {
+				if (curState == state30) {
+					if (bloomFilter.bfCheck(urlTmp)) {
+						urlQueue.push(urlTmp);
+					}
+					urlTmp = "/";
 					curState = state0;
-					break;
 				}
 			}
-			else if (str[i] == ' ')    break;
-			else curState = state0;
-			break;
-		case state8:
-			if (str[i] == ' ') break;
-			else if (str[i] == '>') curState = state0;
-			else if (str[i] == '\"') curState = state9;
-			else if (str[i] == '\n' || str[i] == '\r') break;
-			else {
-				urlTmp.push_back(str[i]);
-			}
-			break;
+			resNode = resNode->next;
 		}
-		if (curState == state9) {
-			if (bloomFilter.bfCheck(urlTmp)) {
-				urlQueue.push(urlTmp);
-			}
-			urlTmp = "/";
-			curState = state0;
-		}
+		delete response;
+		response = NULL;
 	}
-	//delete str;
 }

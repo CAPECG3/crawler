@@ -1,9 +1,11 @@
 #ifndef _BLOOM_FILTER_H_
 #define _BLOOM_FILTER_H_
+#include <iostream>
 #include <condition_variable>
 #include <fstream>
 #include <cmath>
 #include "hash.h"
+#include <cstring>
 using namespace std;
 class BloomFilter {
 public:

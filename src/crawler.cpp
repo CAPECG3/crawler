@@ -1,12 +1,15 @@
 #include "crawler.h"
 size_t Crawler::endNum = 0;
 size_t Crawler::socketNum = 1;
-size_t Crawler::socketNumLimit = 10000;
+size_t Crawler::socketNumLimit = 10;
 Crawler::Crawler(const std::string &_host, const std::string &_url):
 	host(_host), initURL(_url), port(80), sock(socketNumLimit),
 	bev(socketNumLimit, NULL), httpClient(socketNumLimit, NULL) {
 	HttpClient::urlQueue.push(initURL);
-	HttpClient::threadPool.run();
+	HttpClient::scannerThreadPool.run();
+	for (size_t i = 0; i < HttpClient::scannerThreadPool._size; i++) {
+		HttpClient::scannerThreadPool.push(HttpClient::scannerThread);
+	}
 	init_event();
 	connect();
 }
@@ -64,9 +67,7 @@ void Crawler::cb_connect(struct bufferevent *bev, short events, void *ptr) {
 			event_base_loopbreak(base);
 			event_base_free(base);
 			evdns_base_free(dns_base, true);
-			socketNum = 200;
-			//HttpClient::resultFile.close();
-			//HttpClient::threadPool.cancel();
+			socketNum = socketNumLimit;
 		}
 	}
 }
@@ -74,14 +75,19 @@ void Crawler::cb_read(struct bufferevent * bev, void *ptr) {
 	HttpClient *httpClient = (HttpClient *)ptr;
 	//std::cout << "bev" << httpClient->bevName << " Read okay." << std::endl;
 	struct evbuffer *input = bufferevent_get_input(bev);
-	//size_t len=evbuffer_get_length(input);
+	size_t len = evbuffer_get_length(input);
 	int n;
-	char *buf = new char[1024];
-	while ((n = evbuffer_remove(input, buf, 1024))) {
-		//fwrite(buf, 1, n, stdout);
-		httpClient->headerParser(buf, n);
+	while (1) {
+		ResNode *resNode = new ResNode();
+		n = evbuffer_remove(input, resNode->buf, resNode->bufWindow);
+		//fwrite(resNode->buf, 1, n, stdout);
+		if (n <= 0) {
+			delete resNode;
+			break;
+		}
+		resNode->bufLen = n;
+		httpClient->responseParser(resNode);
 	}
-	delete buf;
 }
 void Crawler::cb_write(struct bufferevent * bev, void *ptr) {
 	HttpClient *httpClient = (HttpClient *)ptr;

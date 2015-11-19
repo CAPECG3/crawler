@@ -19,8 +19,6 @@ class ThreadPool {
 	typedef std::function<void()> function;
 private:
 	bool kill = false;
-	size_t _size;
-
 	std::vector<std::thread> threads;
 	bool used = false;
 	std::condition_variable cv;
@@ -31,6 +29,7 @@ private:
 public:
 	ThreadPool(size_t size = 4) : _size(size), bq(cv, _mutex) {
 	}
+	size_t _size;
 	//push tasks into threadPool
 	void push(ThreadPool::function closure) {
 		bq.push(std::move(closure));

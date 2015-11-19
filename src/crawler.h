@@ -18,18 +18,16 @@
 #include <unistd.h>
 #include <netinet/in.h>
 #include "httpClient.h"
-//#include "BlockingQueue.h"
-//#include "BloomFilter.h"
 class Crawler {
 public:
 	Crawler(const std::string &_host, const std::string &_url);
 private:
-	const  std::string host;
-	const std::string initURL;
-	const int port;
-	event_base *base;
-	std::vector<bufferevent *> bev;
-	std::vector<HttpClient *> httpClient;
+	const  std::string host;  //host being crawled
+	const std::string initURL; //the first url 
+	const int port; //host port
+	event_base *base; //libevent event_base
+	std::vector<bufferevent *> bev; //bufferevent with a socket 
+	std::vector<HttpClient *> httpClient;  //
 	std::vector<evutil_socket_t> sock;
 	evdns_base *dns_base;
 	void init_event();

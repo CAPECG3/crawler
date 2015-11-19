@@ -12,23 +12,31 @@
 #include "blockingQueue.h"
 #include "bloomFilter.h"
 #include "threadPool.h"
-struct ResponseHeader {
-	char *content;
-	size_t contentLength = 0;
-	size_t curLength = 0;
-	size_t receivedLength = 0;
-	bool readDone = false;
+#include <condition_variable>
+struct ResNode { //response node
+	char buf[1024];
+	size_t bufWindow = 1024; //buf memory window
+	int bufLen = 0; //used
+	ResNode *next = NULL; //next node of this response
+};
+struct Response {
+	~Response() {
+		ResNode *tmp = headRes;
+		while (tmp) {
+			headRes = tmp;
+			tmp = tmp->next;
+			delete headRes;
+		}
+	}
+	ResNode *headRes = NULL;
+	ResNode *tailRes = NULL;
+	size_t conLen = 0; // html total len
+	size_t conRecLen = 0; //received html len
 };
 class HttpClient {
 public:
-	HttpClient(const std::string &_host, const std::string &_url, int _bevName):
-		host(_host), curURL(_url), port(80), bevName(_bevName) {
-	}
+	HttpClient(const std::string &_host, const std::string &_url, int _bevName);
 	~HttpClient() {
-		if (responseHeader) {
-			delete responseHeader;
-			responseHeader = NULL;
-		}
 	}
 	size_t bevName;
 	const std::string host;
@@ -39,18 +47,22 @@ public:
 	bufferevent *bev;
 	BloomFilter bf;
 	void request();
-	void headerParser(char *buf, size_t len);
+	void responseParser(ResNode *resNode);
+	static void scannerThread();
+	static void requestThread(bufferevent *bev, const std::string &host, std::string *URL);
 	static BlockingQueue<std::string> urlQueue;
-	static ltcp::ThreadPool threadPool;
+	static BlockingQueue<Response *> resQueue;
+	static ltcp::ThreadPool scannerThreadPool;
+	static ltcp::ThreadPool requestThreadPool;
 	static BloomFilter bloomFilter;
 	static ofstream resultFile;
 private:
-	static void requestThread(bufferevent *bev, const std::string &host, string *URL);
-	static void scannerThread(char *str, size_t len);
-	static void scanner(char *str, size_t len);
-	ResponseHeader *responseHeader = NULL;
+	Response *response = NULL;
 	enum state {
-		state0, state1, state2, state3, state4, state5, state6, state7, state8, state9, state10
+		state0, state1, state2, state3, state4, state5, state6, state7, state8,
+		state9, state10, state11, state12, state13, state14, state15, state16, state17,
+		state18, state19, state20, state21, state22, state23, state24, state25, state26,
+		state27, state28, state29, state30
 	};
 };
 #endif
