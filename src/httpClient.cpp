@@ -24,7 +24,7 @@ void HttpClient::request() {
 	                 + "\r\n";
 	bufferevent_write(bev, requestString.c_str(), requestString.size());
 };
-void HttpClient::responseParser(ResNode *resNode) {
+bool HttpClient::responseParser(ResNode *resNode) {
 	if (resNode->bufLen > 15  && !strncmp(resNode->buf, "HTTP/1.1", 8)) {
 		if (!strncmp(resNode->buf, "HTTP/1.1 200 OK", 15) || !strncmp(resNode->buf, "HTTP/1.1 301", 12)) {
 			response = new Response();
@@ -58,7 +58,7 @@ void HttpClient::responseParser(ResNode *resNode) {
 			response->conRecLen = resNode->bufLen;
 		}
 		else {
-			return ;
+			return false;
 		}
 	}
 	else if (response != NULL && response->status == 200) {
@@ -74,9 +74,9 @@ void HttpClient::responseParser(ResNode *resNode) {
 	else {
 		std::cout << "HTTP response status is not 200/301/400" << std::endl;
 		if (resNode->bufLen < resNode->bufWindow) {
-			request();
+			return true;
 		}
-		return ;
+		return false;
 	}
 	if (response && response->conRecLen >= response->conLen && response->conLen != 0) {
 		if (response->status == 200) {
@@ -92,9 +92,9 @@ void HttpClient::responseParser(ResNode *resNode) {
 			delete response;
 			response = NULL;
 		}
-		request();
-		return ;
+		return true;
 	}
+	return false;
 }
 void HttpClient::scannerThread() {
 	// this dfs is only for news.sohu.com

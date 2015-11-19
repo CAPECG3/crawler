@@ -48,7 +48,7 @@ public:
 	bufferevent *bev;
 	BloomFilter bf;
 	void request();
-	void responseParser(ResNode *resNode);
+	bool responseParser(ResNode *resNode);
 	static void scannerThread();
 	static BlockingQueue<std::string> urlQueue;
 	static BlockingQueue<Response *> resQueue;

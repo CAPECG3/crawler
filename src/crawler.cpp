@@ -1,7 +1,7 @@
 #include "crawler.h"
 size_t Crawler::endNum = 0;
 size_t Crawler::socketNum = 1;
-size_t Crawler::socketNumLimit = 10;
+size_t Crawler::socketNumLimit = 200;
 Crawler::Crawler(const std::string &_host, const std::string &_url):
 	host(_host), initURL(_url), port(80), sock(socketNumLimit),
 	bev(socketNumLimit, NULL), httpClient(socketNumLimit, NULL) {
@@ -65,8 +65,8 @@ void Crawler::cb_connect(struct bufferevent *bev, short events, void *ptr) {
 		if (endNum >= socketNum) {
 			std::cout << "base loop break" << std::endl;
 			event_base_loopbreak(base);
-			event_base_free(base);
 			evdns_base_free(dns_base, true);
+			event_base_free(base);
 			socketNum = socketNumLimit;
 		}
 	}
@@ -86,7 +86,9 @@ void Crawler::cb_read(struct bufferevent * bev, void *ptr) {
 			break;
 		}
 		resNode->bufLen = n;
-		httpClient->responseParser(resNode);
+		if (httpClient->responseParser(resNode) == true) {
+			httpClient->request();
+		}
 	}
 }
 void Crawler::cb_write(struct bufferevent * bev, void *ptr) {
