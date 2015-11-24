@@ -11,8 +11,8 @@ HttpClient::HttpClient(const std::string &_host, const std::string &_url, int _b
 void HttpClient::request() {
 	//requestThreadPool.push(requestThread, bev, host, &curURL);
 	curURL = urlQueue.top();
-	int tmp = curURL.find_last_of("/");
-	if (tmp != -1) {
+	size_t tmp = curURL.find_last_of("/");
+	if (tmp != std::string::npos) {
 		curPath = curURL.substr(0, tmp + 1);
 	}
 	else {
@@ -231,6 +231,11 @@ void HttpClient::scannerThread() {
 					}
 					else if (urlTmp[0] == '#') {
 						urlTmp = urlTmp.substr(1);
+					}
+
+					size_t tmp = urlTmp.find_last_of("?");
+					if (tmp != std::string::npos) {
+						urlTmp = urlTmp.substr(0, tmp);
 					}
 					if (urlTmp.size() != 0 && bloomFilter.bfCheck(urlTmp)) {
 						urlQueue.push(urlTmp);
