@@ -3,14 +3,21 @@ BlockingQueue<std::string> HttpClient::urlQueue;
 BlockingQueue<Response *> HttpClient::resQueue;
 ltcp::ThreadPool HttpClient::scannerThreadPool;
 BloomFilter HttpClient::bloomFilter;
+int HttpClient::readNum = 0;
 ofstream HttpClient::resultFile("result.txt");
 HttpClient::HttpClient(const std::string &_host, const std::string &_url, int _bevName):
 	host(_host), curURL(_url), port(80), bevName(_bevName) {
 }
 void HttpClient::request() {
 	//requestThreadPool.push(requestThread, bev, host, &curURL);
-	std::cout << urlQueue.size() << " URL left" << std::endl;
-	curURL = urlQueue.pop();
+	curURL = urlQueue.top();
+	int tmp = curURL.find_last_of("/");
+	if (tmp != -1) {
+		curPath = curURL.substr(0, tmp + 1);
+	}
+	else {
+		curPath = "/";
+	}
 	std::string requestString;
 	requestString =  "GET " + curURL + " HTTP/1.1\r\n"
 	                 + "Host: " +  host + "\r\n"
@@ -25,11 +32,12 @@ void HttpClient::request() {
 	bufferevent_write(bev, requestString.c_str(), requestString.size());
 };
 bool HttpClient::responseParser(ResNode *resNode) {
-	if (resNode->bufLen > 15  && !strncmp(resNode->buf, "HTTP/1.1", 8)) {
-		if (!strncmp(resNode->buf, "HTTP/1.1 200 OK", 15) || !strncmp(resNode->buf, "HTTP/1.1 301", 12)) {
+	if (resNode->bufLen > 15  && !strncmp(resNode->buf, "HTTP/1.1", 8) ) {
+		if (!strncmp(resNode->buf, "HTTP/1.1 200 OK", 15) || !strncmp(resNode->buf, "HTTP/1.1 301", 12)  ) {
 			response = new Response();
 			response->headRes = resNode;
 			response->tailRes = resNode;
+			response->status = 200;
 			char *conLenBegin = strstr(resNode->buf , "Content-Length");
 			if (conLenBegin != NULL) {
 				char tmp[10] = {0};
@@ -40,7 +48,8 @@ bool HttpClient::responseParser(ResNode *resNode) {
 				response->conLen = atoi(tmp);
 			}
 			else {
-				std::cout << "debug" << std::endl;
+				char *chunk = strstr(resNode->buf , "chunked");
+				if (chunk != NULL)response->encoding = "chunked";
 			}
 			char *conBegin = strstr(resNode->buf, "\r\n\r\n");
 			if (conBegin && response->conLen >= 4) {
@@ -49,7 +58,7 @@ bool HttpClient::responseParser(ResNode *resNode) {
 			}
 		}
 		else if (!strncmp(resNode->buf, "HTTP/1.1 404", 12)) {
-			std::cout << "HTTP response status 404" << std::endl;
+			//std::cout << "HTTP response status 404" << std::endl;
 			response = new Response();
 			response->status = 404;
 			response->headRes = resNode;
@@ -57,38 +66,73 @@ bool HttpClient::responseParser(ResNode *resNode) {
 			response->conLen = 1375; //only for news.sohu.com
 			response->conRecLen = resNode->bufLen;
 		}
+		else if (!strncmp(resNode->buf, "HTTP/1.1 400", 12)) {
+			response = new Response();
+			response->status = 400;
+			response->headRes = resNode;
+			response->tailRes = resNode;
+			response->conLen = 1142; //only for news.sohu.com
+			response->conRecLen = resNode->bufLen;
+		}
 		else {
 			return false;
 		}
 	}
-	else if (response != NULL && response->status == 200) {
-		response->conRecLen += resNode->bufLen;
-		response->tailRes->next = resNode;
-		response->tailRes = resNode;
+	else if (response != NULL && (response->status == 200)) {
+		if (response->encoding == "text") {
+			response->conRecLen += resNode->bufLen;
+			response->tailRes->next = resNode;
+			response->tailRes = resNode;
+		}
+		else if (response->encoding == "chunked") {
+			response->conRecLen += resNode->bufLen;
+			response->tailRes->next = resNode;
+			response->tailRes = resNode;
+			char *ifEnd = strstr(resNode->buf , "\r\n0\r\n\r\n");
+			if (ifEnd != NULL) {
+				urlQueue.pop();
+				std::cout << readNum++ << " URL crawled" << std::endl;
+				std::cout << urlQueue.size() << " URL left" << std::endl;
+				resultFile << host << curURL << " " << response->conLen << std::endl;
+				response->curPath = curPath;
+				//add response to response queue
+				resQueue.push(response);
+				response = NULL;
+				return true;
+			}
+			return false;
+		}
 	}
 	else if (response != NULL && response->status == 404) {
 		response->conRecLen += resNode->bufLen;
 		response->tailRes->next = resNode;
 		response->tailRes = resNode;
 	}
+	else if (response != NULL && response->status == 400) {
+		response->conRecLen += resNode->bufLen;
+		response->tailRes->next = resNode;
+		response->tailRes = resNode;
+	}
 	else {
 		std::cout << "HTTP response status is not 200/301/400" << std::endl;
-		if (resNode->bufLen < resNode->bufWindow) {
-			return true;
+		if (curURL == urlQueue.top()) {
+			urlQueue.pop();
 		}
 		return false;
 	}
-	if (response && response->conRecLen >= response->conLen && response->conLen != 0) {
+	if (response && response->conRecLen >= response->conLen && response->encoding == "text") {
+		urlQueue.pop();
 		if (response->status == 200) {
-			static int readNum = 1;
 			std::cout << readNum++ << " URL crawled" << std::endl;
+			std::cout << urlQueue.size() << " URL left" << std::endl;
 			resultFile << host << curURL << " " << response->conLen << std::endl;
+			response->curPath = curPath;
 			//add response to response queue
 			resQueue.push(response);
 			response = NULL;
 		}
-		else if (response->status == 404) {
-			std::cout << "HTTP response status 404" << std::endl;
+		else if (response->status == 404 || response->status == 400) {
+			//std::cout << "HTTP response status 404" << std::endl;
 			delete response;
 			response = NULL;
 		}
@@ -102,7 +146,7 @@ void HttpClient::scannerThread() {
 		Response *response = resQueue.pop();
 		ResNode *resNode = response->headRes;
 		state curState = state0;
-		std::string urlTmp = "/";
+		std::string urlTmp;
 		while (resNode) {
 			char *str = resNode->buf;
 			for (size_t i = 0; i < resNode->bufLen; i++) {
@@ -135,114 +179,63 @@ void HttpClient::scannerThread() {
 				case state6:
 					if (str[i] == '=')  curState = state7;
 					else if (str[i] == '>') curState = state0;
+					else if (str[i] == '\\') break;
 					else  curState = state2;
 					break;
 				case state7:
 					if (str[i] == ' ')  curState = state7;
-					else if (str[i] == '\"') curState = state8;
+					else if (str[i] == '\"'  || str[i] == '\'') curState = state8;
 					else  curState = state0;
 					break;
 				case state8:
-					if (str[i] == 'h') curState = state9;
-					else if (str[i] == '/') curState = state29;
-					else if (str[i] == ' ') break;
-					else curState = state0;
-					break;
-				case state9:
-					if (str[i] == 't') curState = state10;
-					else curState = state0;
-					break;
-				case state10:
-					if (str[i] == 't') curState = state11;
-					else curState = state0;
-					break;
-				case state11:
-					if (str[i] == 'p') curState = state12;
-					else curState = state0;
-					break;
-				case state12:
-					if (str[i] == ':') curState = state13;
-					else curState = state0;
-					break;
-				case state13:
-					if (str[i] == '/') curState = state14;
-					else curState = state0;
-					break;
-				case state14:
-					if (str[i] == '/') curState = state15;
-					else curState = state0;
-					break;
-				case state15:
-					if (str[i] == 'n') curState = state16;
-					else curState = state0;
-					break;
-				case state16:
-					if (str[i] == 'e') curState = state17;
-					else curState = state0;
-					break;
-				case state17:
-					if (str[i] == 'w') curState = state18;
-					else curState = state0;
-					break;
-				case state18:
-					if (str[i] == 's') curState = state19;
-					else curState = state0;
-					break;
-				case state19:
-					if (str[i] == '.') curState = state20;
-					else curState = state0;
-					break;
-				case state20:
-					if (str[i] == 's') curState = state21;
-					else curState = state0;
-					break;
-				case state21:
-					if (str[i] == 'o') curState = state22;
-					else curState = state0;
-					break;
-				case state22:
-					if (str[i] == 'h') curState = state23;
-					else curState = state0;
-					break;
-				case state23:
-					if (str[i] == 'u') curState = state24;
-					else curState = state0;
-					break;
-				case state24:
-					if (str[i] == '.') curState = state25;
-					else curState = state0;
-					break;
-				case state25:
-					if (str[i] == 'c') curState = state26;
-					else curState = state0;
-					break;
-				case state26:
-					if (str[i] == 'o') curState = state27;
-					else curState = state0;
-					break;
-				case state27:
-					if (str[i] == 'm') curState = state28;
-					else curState = state0;
-					break;
-				case state28:
-					if (str[i] == '/') curState = state29;
-					else curState = state0;
-					break;
-				case state29:
 					if (str[i] == ' ') break;
 					else if (str[i] == '>') curState = state0;
-					else if (str[i] == '\"') curState = state30;
+					else if (str[i] == '\"'  || str[i] == '\'') curState = state9;
+					else if (str[i] == '\\') break;
 					else if (str[i] == '\n' || str[i] == '\r') break;
 					else {
 						urlTmp.push_back(str[i]);
 					}
 					break;
 				}
-				if (curState == state30) {
-					if (bloomFilter.bfCheck(urlTmp)) {
+				if (curState == state9) {
+					//Get the relative path
+					/*
+					size_t tmp = urlTmp.find("http://");
+					if (tmp != std::string::npos) {
+						urlTmp = urlTmp.substr(tmp + 7);
+					}
+					*/
+					size_t tmp1 = urlTmp.find("http://news.sohu.com");
+					size_t tmp2 = urlTmp.find("127.0.0.1");
+					size_t tmp3 = urlTmp.find("localhost");
+					if (tmp1 != std::string::npos) {
+						urlTmp = urlTmp.substr(tmp1 + 20);
+					}
+					else if (tmp2 != std::string::npos) {
+						urlTmp = urlTmp.substr(tmp2 + 9);
+					}
+					else if (tmp3 != std::string::npos) {
+						urlTmp = urlTmp.substr(tmp3 + 9);
+					}
+					else if (urlTmp.find(".com") != std::string::npos || urlTmp.find(".net") != std::string::npos
+					         || urlTmp.find(".cn") != std::string::npos || urlTmp.find("www.") != std::string::npos
+					         || urlTmp.find(".org") != std::string::npos || urlTmp.find("javascript") != std::string::npos) {
+						urlTmp = "";
+						curState = state0;
+						break;
+					}
+					else if (urlTmp[0] != '/' && urlTmp[0] != '#') {
+						urlTmp = response->curPath + urlTmp;
+
+					}
+					else if (urlTmp[0] == '#') {
+						urlTmp = urlTmp.substr(1);
+					}
+					if (urlTmp.size() != 0 && bloomFilter.bfCheck(urlTmp)) {
 						urlQueue.push(urlTmp);
 					}
-					urlTmp = "/";
+					urlTmp = "";
 					curState = state0;
 				}
 			}

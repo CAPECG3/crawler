@@ -11,7 +11,7 @@ class BloomFilter {
 public:
 	bool bfCheck(const string &url);
 	//BloomFilter() :n(6), K(11), p(0.01) {
-	BloomFilter() : n(150000), p(0.01) {
+	BloomFilter() : n(1000000), p(0.001) {
 		mCount();
 		binary = new bool[m];
 		fill(binary, binary + m, false);

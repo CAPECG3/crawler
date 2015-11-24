@@ -9,6 +9,7 @@
 #include <event2/buffer.h>
 #include <event2/util.h>
 #include <event2/dns.h>
+#include <unistd.h>
 #include "blockingQueue.h"
 #include "bloomFilter.h"
 #include "threadPool.h"
@@ -31,6 +32,8 @@ struct Response {
 	int status = 200;
 	ResNode *headRes = NULL;
 	ResNode *tailRes = NULL;
+	string encoding = "text";
+	string curPath = "/";
 	size_t conLen = 0; // html total len
 	size_t conRecLen = 0; //received html len
 };
@@ -43,6 +46,7 @@ public:
 	const std::string host;
 	const int port;
 	std::string curURL;
+	std::string curPath;
 	event_base *base;
 	evdns_base *dns_base;
 	bufferevent *bev;
@@ -55,6 +59,7 @@ public:
 	static ltcp::ThreadPool scannerThreadPool;
 	static BloomFilter bloomFilter;
 	static ofstream resultFile;
+	static int readNum;
 private:
 	Response *response = NULL;
 	enum state {

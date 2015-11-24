@@ -25,6 +25,14 @@ public:
 
 		return front;
 	}
+	T top ()  {
+		std::unique_lock<std::mutex> lock (_mutex);
+		_condvar.wait (lock, [this] {return !_queue.empty ();});
+		assert (!_queue.empty ());
+		T front (_queue.front ());
+
+		return front;
+	}
 
 	size_t size() const {
 		std::lock_guard<std::mutex> lock (_mutex);

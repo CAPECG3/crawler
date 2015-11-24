@@ -86,6 +86,7 @@ void Crawler::cb_read(struct bufferevent * bev, void *ptr) {
 			break;
 		}
 		resNode->bufLen = n;
+
 		if (httpClient->responseParser(resNode) == true) {
 			httpClient->request();
 		}
