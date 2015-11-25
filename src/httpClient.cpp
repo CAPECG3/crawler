@@ -229,14 +229,10 @@ void HttpClient::scannerThread() {
 					else if (urlTmp[0] == '#') {
 						urlTmp = urlTmp.substr(1);
 					}
-
 					size_t tmp = urlTmp.find_last_of("?");
 					if (tmp != std::string::npos) {
 						urlTmp = urlTmp.substr(0, tmp);
 					}
-					urlTmp = initPath + urlTmp;
-					tmp1 = urlTmp.find_last_of("index.html");
-					tmp2 = urlTmp.find_last_of("index.shtml");
 					if (initPath != "/") urlTmp = initPath + urlTmp;
 					if (urlTmp.size() != 0 && bloomFilter.bfCheck(urlTmp)) {
 						urlQueue.push(urlTmp);
