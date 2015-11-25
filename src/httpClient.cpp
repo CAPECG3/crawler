@@ -238,14 +238,6 @@ void HttpClient::scannerThread() {
 						urlTmp = urlTmp.substr(0, tmp);
 					}
 					if (initPath != "/") urlTmp = initPath + urlTmp;
-					tmp1 = urlTmp.find_last_of("index.html");
-					tmp2 = urlTmp.find_last_of("index.shtml");
-					if (tmp1 != std::string::npos) {
-						urlTmp = urlTmp.substr(0, tmp1);
-					}
-					if (tmp2 != std::string::npos) {
-						urlTmp = urlTmp.substr(0, tmp2);
-					}
 					urlEdge << response->curURL << ' ' << urlTmp << std::endl;
 					if (urlTmp.size() != 0 && bloomFilter.bfCheck(urlTmp)) {
 						urlQueue.push(urlTmp);
