@@ -34,6 +34,7 @@ struct Response {
 	ResNode *tailRes = NULL;
 	string encoding = "text";
 	string curPath = "/";
+	string curURL;
 	size_t conLen = 0; // html total len
 	size_t conRecLen = 0; //received html len
 };
@@ -58,7 +59,8 @@ public:
 	static BlockingQueue<Response *> resQueue;
 	static ltcp::ThreadPool scannerThreadPool;
 	static BloomFilter bloomFilter;
-	static ofstream resultFile;
+	static ofstream urlNode;
+	static ofstream urlEdge;
 	static int readNum;
 	static std::string initPath;
 private:

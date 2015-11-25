@@ -4,8 +4,9 @@ BlockingQueue<Response *> HttpClient::resQueue;
 ltcp::ThreadPool HttpClient::scannerThreadPool;
 BloomFilter HttpClient::bloomFilter;
 std::string HttpClient::initPath;
-int HttpClient::readNum = 1;
-ofstream HttpClient::resultFile("result.txt");
+int HttpClient::readNum = 0;
+ofstream HttpClient::urlNode("urlNode.txt");
+ofstream HttpClient::urlEdge("urlEdge.txt");
 HttpClient::HttpClient(const std::string &_host, const std::string &_url, int _bevName):
 	host(_host), curURL(_url), port(80), bevName(_bevName) {
 }
@@ -92,13 +93,14 @@ bool HttpClient::responseParser(ResNode *resNode) {
 			char *ifEnd = strstr(resNode->buf , "\r\n0\r\n\r\n");
 			if (ifEnd != NULL) {
 				urlQueue.pop();
-				std::cout << readNum++ << " URL crawled" << std::endl;
-				std::cout << urlQueue.size() << " URL left" << std::endl;
-				resultFile << host << curURL << " " << response->conLen << std::endl;
+				urlNode << readNum << ' ' << curURL << std::endl;
 				response->curPath = curPath;
+				response->curURL = curURL;
 				//add response to response queue
 				resQueue.push(response);
 				response = NULL;
+				std::cout << readNum++ << " URL crawled" << std::endl;
+				std::cout << urlQueue.size() << " URL left" << std::endl;
 				return true;
 			}
 			return false;
@@ -124,13 +126,14 @@ bool HttpClient::responseParser(ResNode *resNode) {
 	if (response && response->conRecLen >= response->conLen && response->encoding == "text") {
 		urlQueue.pop();
 		if (response->status == 200) {
-			std::cout << readNum++ << " URL crawled" << std::endl;
-			std::cout << urlQueue.size() << " URL left" << std::endl;
-			resultFile << host << curURL << " " << response->conLen << std::endl;
+			urlNode << readNum << ' ' << curURL << std::endl;
 			response->curPath = curPath;
+			response->curURL = curURL;
 			//add response to response queue
 			resQueue.push(response);
 			response = NULL;
+			std::cout << readNum++ << " URL crawled" << std::endl;
+			std::cout << urlQueue.size() << " URL left" << std::endl;
 		}
 		else if (response->status == 404 || response->status == 400) {
 			//std::cout << "HTTP response status 404" << std::endl;
@@ -234,7 +237,8 @@ void HttpClient::scannerThread() {
 					if (tmp != std::string::npos) {
 						urlTmp = urlTmp.substr(0, tmp);
 					}
-					urlTmp = initPath + urlTmp;
+					if (initPath != "/") urlTmp = initPath + urlTmp;
+					urlEdge << response->curURL << ' ' << urlTmp << std::endl;
 					if (urlTmp.size() != 0 && bloomFilter.bfCheck(urlTmp)) {
 						urlQueue.push(urlTmp);
 					}
