@@ -3,7 +3,8 @@ BlockingQueue<std::string> HttpClient::urlQueue;
 BlockingQueue<Response *> HttpClient::resQueue;
 ltcp::ThreadPool HttpClient::scannerThreadPool;
 BloomFilter HttpClient::bloomFilter;
-int HttpClient::readNum = 0;
+std::string HttpClient::initPath;
+int HttpClient::readNum = 1;
 ofstream HttpClient::resultFile("result.txt");
 HttpClient::HttpClient(const std::string &_host, const std::string &_url, int _bevName):
 	host(_host), curURL(_url), port(80), bevName(_bevName) {
@@ -208,15 +209,11 @@ void HttpClient::scannerThread() {
 					*/
 					size_t tmp1 = urlTmp.find("http://news.sohu.com");
 					size_t tmp2 = urlTmp.find("127.0.0.1");
-					size_t tmp3 = urlTmp.find("localhost");
 					if (tmp1 != std::string::npos) {
 						urlTmp = urlTmp.substr(tmp1 + 20);
 					}
 					else if (tmp2 != std::string::npos) {
 						urlTmp = urlTmp.substr(tmp2 + 9);
-					}
-					else if (tmp3 != std::string::npos) {
-						urlTmp = urlTmp.substr(tmp3 + 9);
 					}
 					else if (urlTmp.find(".com") != std::string::npos || urlTmp.find(".net") != std::string::npos
 					         || urlTmp.find(".cn") != std::string::npos || urlTmp.find("www.") != std::string::npos
@@ -237,6 +234,7 @@ void HttpClient::scannerThread() {
 					if (tmp != std::string::npos) {
 						urlTmp = urlTmp.substr(0, tmp);
 					}
+					urlTmp = initPath + urlTmp;
 					if (urlTmp.size() != 0 && bloomFilter.bfCheck(urlTmp)) {
 						urlQueue.push(urlTmp);
 					}

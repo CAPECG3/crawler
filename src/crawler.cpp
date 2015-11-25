@@ -6,6 +6,7 @@ Crawler::Crawler(const std::string &_host, const std::string &_url):
 	host(_host), initURL(_url), port(80), sock(socketNumLimit),
 	bev(socketNumLimit, NULL), httpClient(socketNumLimit, NULL) {
 	HttpClient::urlQueue.push(initURL);
+	HttpClient::initPath = initURL;
 	HttpClient::scannerThreadPool.run();
 	for (size_t i = 0; i < HttpClient::scannerThreadPool._size; i++) {
 		HttpClient::scannerThreadPool.push(HttpClient::scannerThread);

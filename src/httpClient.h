@@ -60,6 +60,7 @@ public:
 	static BloomFilter bloomFilter;
 	static ofstream resultFile;
 	static int readNum;
+	static std::string initPath;
 private:
 	Response *response = NULL;
 	enum state {
