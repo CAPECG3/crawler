@@ -3,7 +3,6 @@
 #include<iostream>
 #include<cstring>
 void BloomFilter::bfAdd(unsigned int(*hashFamily[])(const char *str, unsigned int len), const char *x) {
-	std::lock_guard<std::mutex> lock (_mutex);
 	for (int i = 0; i < K; i++) {
 		int len = strlen(x);
 		unsigned int hash = (*hashFamily[i])(x, len);
@@ -12,7 +11,6 @@ void BloomFilter::bfAdd(unsigned int(*hashFamily[])(const char *str, unsigned in
 	}
 }
 bool BloomFilter::bfSearch(unsigned int(*hashFamily[])(const char *str, unsigned int len), const char *x) {
-	std::lock_guard<std::mutex> lock (_mutex);
 	for (int i = 0; i < K; i++) {
 		int len = strlen(x);
 		unsigned int hash = (*hashFamily[i])(x, len);
@@ -24,6 +22,7 @@ bool BloomFilter::bfSearch(unsigned int(*hashFamily[])(const char *str, unsigned
 	return true;
 }
 bool BloomFilter::bfCheck(const string &url) {
+	std::lock_guard<std::mutex> lock (_mutex);
 	const char *url_c = url.c_str();
 	if (bfSearch(h.hashFamily, url_c)) {
 		return false;

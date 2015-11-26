@@ -11,7 +11,7 @@ HttpClient::HttpClient(const std::string &_host, const std::string &_url, int _b
 }
 void HttpClient::request() {
 	//requestThreadPool.push(requestThread, bev, host, &curURL);
-	curURL = urlQueue.top();
+	curURL = urlQueue.pop();
 	size_t tmp = curURL.find_last_of("/");
 	if (tmp != std::string::npos) {
 		curPath = curURL.substr(0, tmp + 1);
@@ -91,7 +91,6 @@ bool HttpClient::responseParser(ResNode *resNode) {
 			response->tailRes = resNode;
 			char *ifEnd = strstr(resNode->buf , "\r\n0\r\n\r\n");
 			if (ifEnd != NULL) {
-				urlQueue.pop();
 				std::cout << readNum++ << " URL crawled" << std::endl;
 				std::cout << urlQueue.size() << " URL left" << std::endl;
 				resultFile << host << curURL << " " << response->conLen << std::endl;
@@ -116,13 +115,9 @@ bool HttpClient::responseParser(ResNode *resNode) {
 	}
 	else {
 		std::cout << "HTTP response status is not 200/301/400" << std::endl;
-		if (curURL == urlQueue.top()) {
-			urlQueue.pop();
-		}
 		return false;
 	}
 	if (response && response->conRecLen >= response->conLen && response->encoding == "text") {
-		urlQueue.pop();
 		if (response->status == 200) {
 			std::cout << readNum++ << " URL crawled" << std::endl;
 			std::cout << urlQueue.size() << " URL left" << std::endl;
